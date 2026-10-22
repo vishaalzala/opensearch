@@ -22,7 +22,7 @@ async function checkUrl(input:string,origin:string) {
  if(!ips.length||ips.some(x=>!addressIsPublic(x.address)))throw Error('Blocked network address');
  return u.toString();
 }
-async function safeFetch(input:string,host:string,maxBytes:number,kind:'xml'|'html') {
+export async function safeFetch(input:string,host:string,maxBytes:number,kind:'xml'|'html') {
  const url=await checkUrl(input,host);
  const response=await fetch(url,{redirect:'error',cache:'no-store',signal:AbortSignal.timeout(7000),headers:{'User-Agent':'OpenSearchBot/0.1 (+https://opensearch-pi.vercel.app)','Accept':kind==='xml'?'application/xml,text/xml':'text/html'}});
  if(!response.ok)throw Error('Remote fetch failed');
@@ -36,9 +36,9 @@ async function safeFetch(input:string,host:string,maxBytes:number,kind:'xml'|'ht
  const out=new Uint8Array(size);let offset=0;for(const c of chunks){out.set(c,offset);offset+=c.length}
  return new TextDecoder().decode(out);
 }
-function locations(xml:string){return [...xml.matchAll(/<loc\b[^>]*>([\s\S]*?)<\/loc>/gi)].map(m=>m[1].replace(/&amp;/g,'&').trim()).filter(Boolean)}
+export function locations(xml:string){return [...xml.matchAll(/<loc\b[^>]*>([\s\S]*?)<\/loc>/gi)].map(m=>m[1].replace(/&amp;/g,'&').trim()).filter(Boolean)}
 function decode(s:string){return s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(Number(n))).trim()}
-function extract(html:string,url:string) {
+export function extract(html:string,url:string) {
  const title=decode((html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)||[])[1]||new URL(url).pathname);
  const description=decode((html.match(/<meta\s+[^>]*name=["']description["'][^>]*content=["']([^"']*)/i)||[])[1]||'');
  const clean=decode(html.replace(/<(script|style|noscript|svg|head)\b[^>]*>[\s\S]*?<\/\1>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ')).slice(0,12000);
