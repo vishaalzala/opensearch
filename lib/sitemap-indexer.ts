@@ -56,13 +56,17 @@ export async function indexApprovedWebsite(site:{id:string;url:string;sitemap_ur
  }
  urls=[...new Set(urls)].filter(u=>{try{return new URL(u).hostname===host&&new URL(u).protocol==='https:'}catch{return false}}).slice(0,MAX_PAGES);
  let indexed=0,failed=0;
- for(const pageUrl of urls){
-  try{
-   const html=await safeFetch(pageUrl,host,400_000,'html');
-   const page=extract(html,pageUrl);
-   const {error}=await db().from('search_pages').upsert({...page,website_id:site.id,is_published:true},{onConflict:'url'});
-   if(error)throw error;indexed++;
-  }catch{failed++}
+ for(let i=0;i<urls.length;i+=5){
+  const results=await Promise.all(urls.slice(i,i+5).map(async(pageUrl)=>{
+   try{
+    const html=await safeFetch(pageUrl,host,400_000,'html');
+    const page=extract(html,pageUrl);
+    const {error}=await db().from('search_pages').upsert({...page,website_id:site.id,is_published:true},{onConflict:'url'});
+    return !error;
+   }catch{return false}
+  }));
+  indexed+=results.filter(Boolean).length;
+  failed+=results.filter(x=>!x).length;
  }
  return {discovered:urls.length,indexed,failed,limited:urls.length===MAX_PAGES};
 }
