@@ -1,7 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {db} from '../../../../lib/db';
 import {isAdmin} from '../../../../lib/admin';
-import {indexApprovedWebsite} from '../../../../lib/sitemap-indexer';
+import {startCrawl} from '../../../../lib/crawl-queue';
 export const maxDuration=60;
 export async function GET(){
  if(!await isAdmin())return NextResponse.json({error:'Unauthorized'},{status:401});
@@ -16,9 +16,9 @@ export async function PATCH(req:NextRequest){
  if(error)return NextResponse.json({error:'Update failed'},{status:503});
  if(b.status!=='approved')return NextResponse.json({ok:true});
  try {
-  const indexing=await indexApprovedWebsite(site);
-  return NextResponse.json({ok:true,indexing});
+  const jobId=await startCrawl(site);
+  return NextResponse.json({ok:true,jobId});
  }catch(e){
-  return NextResponse.json({ok:true,indexingError:'Approved, but sitemap indexing could not finish. Check the sitemap URL, HTTPS access, and indexing limits.'});
+  return NextResponse.json({ok:true,indexingError:'Website approved, but unable to queue indexing.'});
  }
 }
