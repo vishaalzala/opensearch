@@ -6,7 +6,8 @@ export async function startCrawl(site:{id:string;url:string;sitemap_url:string|n
  const {data:job,error}=await db().from('crawl_jobs').insert({website_id:site.id,status:'queued'}).select('id').single();
  if(error||!job)throw Error('Failed to start crawl');
  const sitemap=site.sitemap_url||new URL('/sitemap.xml',site.url).toString();
- const {error:queueError}=await db().from('crawl_queue').insert({job_id:job.id,url:sitemap,kind:'sitemap'});
+ const initial=[{job_id:job.id,url:sitemap,kind:'sitemap'},{job_id:job.id,url:site.url,kind:'page'}];
+ const {error:queueError}=await db().from('crawl_queue').insert(initial);
  if(queueError)throw Error('Failed to queue sitemap');
  return job.id as string;
 }
@@ -40,6 +41,13 @@ export async function runCrawlBatch(jobId:string) {
    }else{
     const html=await safeFetch(task.url,host,400_000,'html');
     const page=extract(html,task.url);
+    // Discover same-site links from indexed pages, subject to the crawl limit.
+    const hrefs=[...html.matchAll(/<a\\b[^>]*\\bhref=["']([^"']+)["']/gi)].map(m=>m[1]);
+    const links=[...new Set(hrefs.map(h=>{try{return new URL(h,task.url).toString()}catch{return ''}}).filter(h=>{try{const u=new URL(h);return u.protocol==='https:'&&u.hostname===host&&!!validWebsite(h)&&!/(\\.(pdf|jpg|jpeg|png|gif|webp|zip|mp4|css|js)(\\?|$))/i.test(u.pathname)}catch{return false}}))].slice(0,200);
+    const {count:queued}=await db().from('crawl_queue').select('id',{count:'exact',head:true}).eq('job_id',jobId);
+    const free=Math.max(0,LIMIT-(queued||0));
+    for(let i=0;i<Math.min(links.length,free);i+=100){await db().from('crawl_queue').upsert(links.slice(i,Math.min(i+100,free)).map(url=>({job_id:jobId,url,kind:'page'})),{onConflict:'job_id,url,kind',ignoreDuplicates:true});}
+    discovered+=Math.min(links.length,free);
     const {error:e}=await db().from('search_pages').upsert({...page,website_id:site.id,is_published:true},{onConflict:'url'});
     if(e)throw e;
     indexed++;
