@@ -1,5 +1,5 @@
-import {AdminWorkspace} from './workspace';
 'use client';
+import {AdminWorkspace} from './workspace';
 import {useEffect,useState} from 'react';
 type Site={id:string;url:string;title:string;description:string;sitemap_url?:string|null;status:string;submitted_at:string};
 export default function Admin(){
