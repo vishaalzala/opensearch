@@ -44,3 +44,20 @@ Both the public form at `/submit` and the administrator form at `/smartadmin/add
 - All administrator actions enforce Supabase Auth and the admin allowlist.
 - Public submissions have rate limiting, optional Turnstile, and mandatory moderation.
 - Peer-to-peer search is not enabled; no visitor device data is currently shared with peers.
+
+
+## Background crawler operations
+
+The independent worker is `GET /api/cron/crawl`. Vercel Cron invokes it hourly via `vercel.json` on plans that allow hourly scheduling. It is **fail-closed** until a strong `CRON_SECRET` is configured as an encrypted **Production** environment variable in Vercel. Vercel automatically supplies `Authorization: Bearer <CRON_SECRET>` to the scheduled request. Do **not** make this endpoint public or place the secret in `NEXT_PUBLIC_*`.
+
+- The worker processes at most **three** queued requests on each tick, ordered by the least-recently-updated job. It does not run during search API requests.
+- The existing authorised `/api/admin/crawl` and Crawl Monitor manual controls remain available unchanged.
+- Interrupted `processing` records can be reclaimed after a 10-minute lease expiry (up to three attempts).
+- Remote sites may return HTTP 403, non-HTML files or connection failures; those pages cannot safely be indexed and are reported under crawl errors.
+- On Hobby plans, Vercel supports **daily**, not hourly, cron scheduling. Change the schedule to once daily if deploying on Hobby. Processing millions of pages needs a dedicated job queue / worker and higher rate and cost planning.
+- The Vercel environment-variable connector previously returned a project-not-found error when attempting to configure the cron secret. Verify `CRON_SECRET` in the Vercel dashboard before claiming autonomous indexing is enabled.
+- Scheduled processing uses isolated serverless function executions; it does not block home/search routes, but it still consumes function usage and database resources. Keep a low work budget until usage has been measured.
+
+## Privacy copy
+
+The public homepage says OpenSearch does not store search history in its application database or use IP addresses to build search profiles. Hosting and security providers may still process request metadata as needed for network delivery and abuse protection. Public form rate-limiting uses a keyed hash derived from the requesting IP address rather than saving its raw value in the quota table.
