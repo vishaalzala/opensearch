@@ -5,7 +5,7 @@ import {startCrawl} from '../../../../lib/crawl-queue';
 export const maxDuration=60;
 export async function GET(){
  if(!await isAdmin())return NextResponse.json({error:'Unauthorized'},{status:401});
- const {data,error}=await db().from('websites').select('id,url,title,description,sitemap_url,status,submitted_at').order('submitted_at',{ascending:false}).limit(100);
+ const {data,error}=await db().from('websites').select('id,url,title,description,sitemap_url,status,submitted_at,website_sitemaps(id,url,status)').order('submitted_at',{ascending:false}).limit(100);
  return error?NextResponse.json({error:'Database error'},{status:503}):NextResponse.json({websites:data});
 }
 export async function PATCH(req:NextRequest){
@@ -15,6 +15,8 @@ export async function PATCH(req:NextRequest){
  const {data:site,error}=await db().from('websites').update({status:b.status,reviewed_at:new Date().toISOString(),title:String(b.title||'').slice(0,220),description:String(b.description||'').slice(0,1000)}).eq('id',b.id).select('id,url,sitemap_url').single();
  if(error)return NextResponse.json({error:'Update failed'},{status:503});
  if(b.status!=='approved')return NextResponse.json({ok:true});
+ const {error:sitemapError}=await db().from('website_sitemaps').update({status:'approved',reviewed_at:new Date().toISOString()}).eq('website_id',site.id).eq('status','pending');
+ if(sitemapError)return NextResponse.json({ok:true,indexingError:'Website approved, but pending sitemaps could not be approved.'});
  try {
   const jobId=await startCrawl(site);
   return NextResponse.json({ok:true,jobId});
