@@ -19,7 +19,7 @@ export async function runCrawlBatch(jobId:string) {
  const host=new URL(site.url).hostname;
  const {data:queue,error:qError}=await db().from('crawl_queue').select('id,url,kind,attempts').eq('job_id',jobId).eq('status','pending').order('id').limit(6);
  if(qError)throw Error('Cannot read queue');
- if(!queue?.length){await db().from('crawl_jobs').update({status:'completed',updated_at:new Date().toISOString()}).eq('id',jobId);return {done:true,processed:job.processed,indexed:job.indexed,failed:job.failed}}
+ if(!queue?.length){const status=job.failed>0||job.indexed===0?'failed':'completed';await db().from('crawl_jobs').update({status,error:status==='failed'?'Indexing finished with errors or no indexed pages':null,updated_at:new Date().toISOString()}).eq('id',jobId);return {done:true,status,processed:job.processed,indexed:job.indexed,failed:job.failed}}
  let processed=0,indexed=0,failed=0,discovered=0;
  for(const task of queue){
   // Claim the task atomically so double-clicked batches do not duplicate work.
@@ -60,6 +60,8 @@ export async function runCrawlBatch(jobId:string) {
  }
  const {data:pending}=await db().from('crawl_queue').select('id').eq('job_id',jobId).eq('status','pending').limit(1);
  const done=!pending?.length;
- await db().from('crawl_jobs').update({status:done?'completed':'running',discovered:job.discovered+discovered,processed:job.processed+processed,indexed:job.indexed+indexed,failed:job.failed+failed,updated_at:new Date().toISOString()}).eq('id',jobId);
- return {done,processed:job.processed+processed,indexed:job.indexed+indexed,failed:job.failed+failed,discovered:job.discovered+discovered};
+ const totalIndexed=job.indexed+indexed,totalFailed=job.failed+failed;
+ const status=done?(totalFailed>0||totalIndexed===0?'failed':'completed'):'running';
+ await db().from('crawl_jobs').update({status,error:status==='failed'?'Indexing finished with failed URLs or no indexed pages':null,discovered:job.discovered+discovered,processed:job.processed+processed,indexed:totalIndexed,failed:totalFailed,updated_at:new Date().toISOString()}).eq('id',jobId);
+ return {done,status,processed:job.processed+processed,indexed:totalIndexed,failed:totalFailed,discovered:job.discovered+discovered};
 }
