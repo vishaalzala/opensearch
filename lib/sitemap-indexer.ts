@@ -24,11 +24,28 @@ async function checkUrl(input:string,origin:string) {
 }
 export async function safeFetch(input:string,host:string,maxBytes:number,kind:'xml'|'html') {
  const url=await checkUrl(input,host);
- const response=await fetch(url,{redirect:'error',cache:'no-store',signal:AbortSignal.timeout(7000),headers:{'User-Agent':'OpenSearchBot/0.1 (+https://opensearch-pi.vercel.app)','Accept':kind==='xml'?'application/xml,text/xml':'text/html'}});
- if(!response.ok)throw Error('Remote fetch failed');
- const type=response.headers.get('content-type')||'';
- if(kind==='xml'&&!/(xml|text\/plain)/i.test(type))throw Error('Not XML');
- if(kind==='html'&&!/text\/html/i.test(type))throw Error('Not HTML');
+ let current=url;
+ let response:Response|null=null;
+ for(let attempt=0;attempt<3;attempt++){
+  // Follow only verified redirects within the approved HTTPS host.
+  response=await fetch(current,{redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(7000),headers:{
+   'User-Agent':'OpenSearchBot/0.1 (+https://opensearch-pi.vercel.app)',
+   'Accept':kind==='xml'?'application/xml,text/xml':'text/html,application/xhtml+xml'
+  }});
+  if([301,302,303,307,308].includes(response.status)){
+   const location=response.headers.get('location');
+   await response.body?.cancel();
+   if(!location)throw Error('Redirect missing destination');
+   current=await checkUrl(new URL(location,current).toString(),host);
+   continue;
+  }
+  break;
+ }
+ if(!response||[301,302,303,307,308].includes(response.status))throw Error('Too many redirects');
+ if(!response.ok)throw Error('HTTP '+response.status+' from source website');
+ const type=response.headers.get('content-type')||'unspecified';
+ if(kind==='xml'&&!/(xml|text\/plain)/i.test(type))throw Error('Expected XML, received '+type.slice(0,80));
+ if(kind==='html'&&!/(text\/html|application\/xhtml\+xml)/i.test(type))throw Error('Not an HTML page ('+type.slice(0,80)+')');
  const reader=response.body?.getReader();
  if(!reader)throw Error('Missing response body');
  let size=0;const chunks:Uint8Array[]=[];
