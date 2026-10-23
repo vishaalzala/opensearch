@@ -48,20 +48,19 @@ export default function Submit(){
   }
  }
 
- return <main><div className="panel">
+ return <main className="submit-page"><div className="panel">
   <a href="/" aria-label="OpenSearch home" style={{display:'inline-block',marginBottom:12,textDecoration:'none'}}>
    <span className="brand">Open<span>Search</span></span>
   </a>
   <h1>Submit sitemaps</h1>
-  <p className="muted">Add one or more sitemaps for the same website. You can return later to add more. New sitemaps require administrator approval.</p>
+  <p className="muted">Suggest one or more XML sitemaps. New links are reviewed before indexing.</p>
   <form onSubmit={submit}>
    <label htmlFor="sitemaps">Sitemap XML URLs (one per line)</label>
    <textarea id="sitemaps" ref={field} rows={5} value={sitemapUrls} onChange={e=>setSitemapUrls(e.target.value)}
     placeholder={'https://example.com/posts-sitemap.xml\nhttps://example.com/courses-sitemap.xml'} required/>
-   <p className="muted" style={{fontSize:12}}>Existing sitemap entries are preserved. Only new URLs are added. Maximum 20 URLs per submission.</p>
+   <p className="muted" style={{fontSize:12}}>One URL per line · Same website · Maximum 20 links.</p>
    <div id="turnstile" style={{marginBottom:sitekey?16:0}}/>
-   {!sitekey&&<p className="muted" style={{fontSize:12}}>Submissions are rate-limited and checked by an administrator before indexing.</p>}
-   <button disabled={busy||!!sitekey&&!token}>{busy?'Saving sitemaps…':'Submit sitemaps for review'}</button>
+   <button disabled={busy||!!sitekey&&!token}>{busy?'Saving sitemaps…':'Submit for review'}</button>
   </form>
   {notice&&<div role="status" aria-live="polite" className="panel" style={{margin:'18px 0 0',padding:16,background:notice.success?'#f4fbf7':'#fff6f4',borderColor:notice.success?'#bfe8d0':'#f0c7c4'}}>
    <strong>{notice.success?'Submission confirmed':'Submission not saved'}</strong>
