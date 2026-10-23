@@ -1,26 +1,41 @@
 import {validWebsite} from './safety';
 
-/** Validate every submitted XML sitemap; never silently discard invalid entries. */
-export function parseSitemaps(input:unknown, limit=20):
- {websiteUrl:string; urls:string[]} | {error:string} {
- const raw=Array.isArray(input)?input:typeof input==='string'?input.split(/[\r\n,]+/):[];
- if(raw.length>limit)return {error:'Submit no more than '+limit+' sitemaps at once.'};
- if(!raw.length)return {error:'Enter at least one sitemap XML URL.'};
- const normalized:string[]=[];
- for(const entry of raw) {
-  if(typeof entry!=='string'||!entry.trim())continue;
-  const url=validWebsite(entry.trim());
-  if(!url)return {error:'Invalid sitemap URL: '+String(entry).slice(0,100)};
-  const parsed=new URL(url);
-  if(parsed.protocol!=='https:'||!/\.xml$/i.test(parsed.pathname))
-   return {error:'Each sitemap must be a public HTTPS .xml URL.'};
-  // An empty query marker (sitemap.xml?) must not create a duplicate URL.
-  const clean=parsed.toString();
-  normalized.push(clean.endsWith('?')?clean.slice(0,-1):clean);
+export type ParsedSubmission={websiteUrl:string;urls:string[];websiteProvided:boolean};
+
+/** Website URL, same-origin XML sitemap URLs, or both. */
+export function parseWebsiteSubmission(input:{websiteUrl?:unknown;sitemapUrls?:unknown;sitemapUrl?:unknown},limit=20):
+ ParsedSubmission | {error:string}{
+ const supplied=typeof input.websiteUrl==='string'?input.websiteUrl.trim():'';
+ const rawSitemaps=input.sitemapUrls??input.sitemapUrl??'';
+ const entries=Array.isArray(rawSitemaps)?rawSitemaps:typeof rawSitemaps==='string'?rawSitemaps.split(/[\r\n,]+/):[];
+ const links=entries.filter((value):value is string=>typeof value==='string'&&value.trim().length>0);
+ if(links.length>limit)return {error:'Add no more than '+limit+' sitemaps per submission.'};
+ if(!supplied&&!links.length)return {error:'Enter a website URL or at least one sitemap XML URL.'};
+ let websiteUrl='';
+ if(supplied){
+  const valid=validWebsite(supplied);
+  if(!valid||new URL(valid).protocol!=='https:')return {error:'Website must use a valid public HTTPS URL.'};
+  websiteUrl=new URL(valid).origin+'/';
  }
- const urls=[...new Set(normalized)];
- if(!urls.length)return {error:'Enter at least one sitemap XML URL.'};
- const origin=new URL(urls[0]).origin;
- if(urls.some(url=>new URL(url).origin!==origin))return {error:'All sitemaps in one submission must belong to the same website.'};
- return {websiteUrl:origin+'/',urls};
+ const urls:string[]=[];
+ for(const entry of links){
+  const valid=validWebsite(entry.trim());
+  if(!valid)return {error:'Invalid sitemap URL: '+entry.slice(0,110)};
+  const target=new URL(valid);
+  if(target.protocol!=='https:'||!(/\.xml$/i.test(target.pathname)||/\.xml\.gz$/i.test(target.pathname))){
+   return {error:'Sitemaps must be public HTTPS .xml or .xml.gz URLs.'};
+  }
+  // Remove harmless empty question marks; preserve meaningful sitemap query parameters.
+  urls.push(target.toString().replace(/\?$/,''));
+ }
+ const unique=[...new Set(urls)];
+ if(!websiteUrl&&unique.length)websiteUrl=new URL(unique[0]).origin+'/';
+ if(unique.some(url=>new URL(url).origin!==new URL(websiteUrl).origin))
+  return {error:'Website and sitemap URLs must have the same HTTPS origin (including www).'};
+ return {websiteUrl,urls:unique,websiteProvided:!!supplied};
+}
+
+/** Backwards-compatible validator for callers that only submit XML sitemaps. */
+export function parseSitemaps(input:unknown,limit=20){
+ return parseWebsiteSubmission({sitemapUrls:input},limit);
 }
