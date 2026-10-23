@@ -8,7 +8,7 @@ export default function Admin(){
  const [logged,setLogged]=useState(false),[loading,setLoading]=useState(true);
  const [message,setMessage]=useState(''),[busy,setBusy]=useState(false);
  async function load(){
-  try{const r=await fetch('/api/admin/submissions',{cache:'no-store'});setLogged(r.ok)}
+  try{const r=await fetch('/api/admin/session',{cache:'no-store'});setLogged(r.ok)}
   catch{setLogged(false)}
   finally{setLoading(false)}
  }
