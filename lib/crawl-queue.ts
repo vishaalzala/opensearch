@@ -8,8 +8,7 @@ export async function startCrawl(site:{id:string;url:string;sitemap_url:string|n
   .select('url').eq('website_id',site.id).eq('status','approved').order('created_at',{ascending:true}).limit(500);
  if(lookupError)throw Error('Unable to load approved sitemaps');
  const sitemapUrls=[...new Set((sitemaps||[]).map(s=>s.url))];
- // Legacy fallback when an older site's sitemap has not yet been migrated.
- if(!sitemapUrls.length && site.sitemap_url)sitemapUrls.push(site.sitemap_url);
+ // Only approved sitemap records may be crawled. A website without one is crawled via its homepage.
  // A website can be indexed from its homepage links even without an XML sitemap.
  const {data:job,error}=await database.from('crawl_jobs').insert({website_id:site.id,status:'queued'}).select('id').single();
  if(error||!job)throw Error('Failed to start crawl');
