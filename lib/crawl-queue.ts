@@ -26,19 +26,40 @@ export async function startCrawl(site:{id:string;url:string;sitemap_url:string|n
  }
  return job.id as string;
 }
-export async function runCrawlBatch(jobId:string) {
+export async function runCrawlBatch(jobId:string,batchSize=6) {
  const {data:job,error}=await db().from('crawl_jobs').select('id,website_id,status,discovered,processed,indexed,failed').eq('id',jobId).single();
  if(error||!job)throw Error('Crawl not found');
  const {data:site}=await db().from('websites').select('id,url,status').eq('id',job.website_id).single();
  if(!site||site.status!=='approved')throw Error('Website must be approved');
  const host=new URL(site.url).hostname;
- const {data:queue,error:qError}=await db().from('crawl_queue').select('id,url,kind,attempts').eq('job_id',jobId).eq('status','pending').order('id').limit(6);
+ // Recover tasks left in 'processing' when a function timed out or was interrupted.
+ // Leave genuinely active claims untouched for at least ten minutes.
+ const stale=new Date(Date.now()-10*60*1000).toISOString();
+ const {data:abandoned}=await db().from('crawl_queue')
+  .select('id,attempts').eq('job_id',jobId).eq('status','processing')
+  .or('claimed_at.is.null,claimed_at.lt.'+stale).limit(20);
+ for(const entry of abandoned||[]){
+  await db().from('crawl_queue').update({
+   status:entry.attempts>=3?'failed':'pending',claimed_at:null,
+   last_error:entry.attempts>=3?'Interrupted repeatedly while processing':null
+  }).eq('id',entry.id).eq('status','processing');
+ }
+ const {data:queue,error:qError}=await db().from('crawl_queue')
+  .select('id,url,kind,attempts').eq('job_id',jobId).eq('status','pending')
+  .order('id').limit(Math.min(6,Math.max(1,batchSize)));
  if(qError)throw Error('Cannot read queue');
- if(!queue?.length){const status=job.failed>0||job.indexed===0?'failed':'completed';await db().from('crawl_jobs').update({status,error:status==='failed'?'Indexing finished with errors or no indexed pages':null,updated_at:new Date().toISOString()}).eq('id',jobId);return {done:true,status,processed:job.processed,indexed:job.indexed,failed:job.failed}}
+ if(!queue?.length){
+  const {count:inFlight}=await db().from('crawl_queue').select('id',{count:'exact',head:true})
+   .eq('job_id',jobId).eq('status','processing');
+  if(inFlight)return {done:false,status:'running',processed:job.processed,indexed:job.indexed,failed:job.failed};
+  const status=job.failed>0||job.indexed===0?'failed':'completed';
+  await db().from('crawl_jobs').update({status,error:status==='failed'?'Indexing finished with errors or no indexed pages':null,updated_at:new Date().toISOString()}).eq('id',jobId);
+  return {done:true,status,processed:job.processed,indexed:job.indexed,failed:job.failed};
+ }
  let processed=0,indexed=0,failed=0,discovered=0;
  for(const task of queue){
   // Claim the task atomically so double-clicked batches do not duplicate work.
-  const {data:claimed}=await db().from('crawl_queue').update({status:'processing',attempts:task.attempts+1}).eq('id',task.id).eq('status','pending').select('id').maybeSingle();
+  const {data:claimed}=await db().from('crawl_queue').update({status:'processing',attempts:task.attempts+1,claimed_at:new Date().toISOString()}).eq('id',task.id).eq('status','pending').select('id').maybeSingle();
   if(!claimed)continue;
   try{
    if(task.kind==='sitemap'){
@@ -54,7 +75,7 @@ export async function runCrawlBatch(jobId:string) {
     }
     discovered+=Math.min(urls.length,capacity);
    }else{
-    const html=await safeFetch(task.url,host,400_000,'html');
+    const html=await safeFetch(task.url,host,700_000,'html');
     const page=extract(html,task.url);
     // Discover same-site links from indexed pages, subject to the crawl limit.
     const hrefs=[...html.matchAll(/<a\b[^>]*\bhref=["']([^"']+)["']/gi)].map(m=>m[1]);
@@ -67,14 +88,15 @@ export async function runCrawlBatch(jobId:string) {
     if(e)throw e;
     indexed++;
    }
-   await db().from('crawl_queue').update({status:'done'}).eq('id',task.id);
+   await db().from('crawl_queue').update({status:'done',claimed_at:null}).eq('id',task.id);
   }catch(e){
-   failed++;await db().from('crawl_queue').update({status:'failed',last_error:String(e).slice(0,300)}).eq('id',task.id);
+   failed++;await db().from('crawl_queue').update({status:'failed',claimed_at:null,last_error:e instanceof Error?e.message.slice(0,300):String(e).slice(0,300)}).eq('id',task.id);
   }
   processed++;
  }
  const {data:pending}=await db().from('crawl_queue').select('id').eq('job_id',jobId).eq('status','pending').limit(1);
- const done=!pending?.length;
+ const {count:inFlight}=await db().from('crawl_queue').select('id',{count:'exact',head:true}).eq('job_id',jobId).eq('status','processing');
+ const done=!pending?.length&&!inFlight;
  const totalIndexed=job.indexed+indexed,totalFailed=job.failed+failed;
  const status=done?(totalFailed>0||totalIndexed===0?'failed':'completed'):'running';
  await db().from('crawl_jobs').update({status,error:status==='failed'?'Indexing finished with failed URLs or no indexed pages':null,discovered:job.discovered+discovered,processed:job.processed+processed,indexed:totalIndexed,failed:totalFailed,updated_at:new Date().toISOString()}).eq('id',jobId);
