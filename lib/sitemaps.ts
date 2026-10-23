@@ -22,8 +22,8 @@ export function parseWebsiteSubmission(input:{websiteUrl?:unknown;sitemapUrls?:u
   const valid=validWebsite(entry.trim());
   if(!valid)return {error:'Invalid sitemap URL: '+entry.slice(0,110)};
   const target=new URL(valid);
-  if(target.protocol!=='https:'||!(/\.xml$/i.test(target.pathname)||/\.xml\.gz$/i.test(target.pathname))){
-   return {error:'Sitemaps must be public HTTPS .xml or .xml.gz URLs.'};
+  if(target.protocol!=='https:'||!/\.xml$/i.test(target.pathname)){
+   return {error:'Sitemaps must be public HTTPS .xml URLs.'};
   }
   // Remove harmless empty question marks; preserve meaningful sitemap query parameters.
   urls.push(target.toString().replace(/\?$/,''));
