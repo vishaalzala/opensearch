@@ -11,6 +11,7 @@ export default function Home(){
     <button type="submit">Search</button>
    </form>
    <p className="home-contribute"><Link href="/submit">Submit a website <span aria-hidden="true">→</span></Link></p>
+   <p className="home-privacy">We don’t store your search history or use your IP address to profile you.</p>
   </section>
  </main>;
 }
