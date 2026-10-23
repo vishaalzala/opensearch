@@ -144,13 +144,13 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
     setIndexInfo('Indexing job '+jobId.slice(0,8)+': '+d.indexed+' pages, '+d.failed+' failed URLs');
     if(d.done){
      completed=true;
-     notify(d.status==='failed'?'Indexing finished with errors. Review the crawl monitor.':'Indexing finished successfully.',d.status!=='failed');
+     if(!quiet)notify(d.status==='failed'?'Indexing finished with errors. Review the crawl monitor.':'Indexing finished successfully.',d.status!=='failed');
      break;
     }
    }
-   if(!completed)notify('Indexing paused after 300 batches. You can resume it from Crawl Monitor.',false);
+   if(!completed&&!quiet)notify('Indexing paused after 300 batches. You can resume it from Crawl Monitor.',false);
    await refresh();
-  }catch(e){notify('Indexing paused: '+String(e),false)}
+  }catch(e){if(!quiet)notify('Indexing paused: '+String(e),false);else setIndexInfo('Indexing paused. See Crawl Monitor for details.');}
   finally{
    activeJobs.current.delete(jobId);setActiveRuns(Array.from(activeJobs.current));
    if(!quiet)setBusy(false);
