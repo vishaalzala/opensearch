@@ -23,10 +23,14 @@ export default function Search(){
  const start=Math.max(1,Math.min(page-2,Math.max(1,totalPages-4)));
  for(let n=start;n<=Math.min(totalPages,start+4);n++)pages.push(n);
  const link=(p:number)=>'/search?q='+encodeURIComponent(q)+'&page='+p;
- return <main>
-  <a href="/" aria-label="OpenSearch homepage" className="brand" style={{display:'inline-block',marginBottom:18}}>Open<span>Search</span></a>
-  <form action="/search" className="searchform"><input name="q" defaultValue={q} placeholder="Search..." required minLength={2}/><button>Search</button></form>
-  <p className="muted status">{state}</p>
+ return <main className="search-page">
+  <div className="search-page-head">
+   <a href="/" aria-label="OpenSearch homepage" className="search-page-logo">Open<span>Search</span></a>
+   <form role="search" action="/search" method="get" className="searchform search-page-form"><label htmlFor="results-search" className="visually-hidden">Search the web</label><input id="results-search" type="search" name="q" defaultValue={q} placeholder="Search the web" maxLength={160} required minLength={2}/><button type="submit">Search</button></form>
+  </div>
+  <div className="search-page-content">
+  <h1 className="visually-hidden">Search results</h1>
+  <p className="muted status" role="status">{state}</p>
   {results.map(r=><div className="result" key={r.id}><small>{r.url}</small><h3><a href={r.url} target="_blank" rel="noopener noreferrer">{r.title||r.url} ↗</a></h3><p>{r.description}</p></div>)}
   {totalPages>1&&<nav aria-label="Search result pages" style={{display:'flex',justifyContent:'center',alignItems:'center',gap:8,flexWrap:'wrap',marginTop:32}}>
    {page>1&&<a href={link(page-1)} style={{padding:10}}>← Previous</a>}
@@ -35,6 +39,6 @@ export default function Search(){
    {start+4<totalPages&&<><span aria-hidden="true">…</span><a href={link(totalPages)} style={{padding:10}}>{totalPages}</a></>}
    {page<totalPages&&<a href={link(page+1)} style={{padding:10}}>Next →</a>}
   </nav>}
-  <p className="muted" style={{marginTop:24}}>Only approved, indexed websites appear in results.</p>
+  </div>
  </main>;
 }
