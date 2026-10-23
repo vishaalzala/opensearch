@@ -10,7 +10,7 @@ export default function Home(){
     <input id="home-search-input" name="q" type="search" minLength={2} maxLength={160} placeholder="Search the web" autoComplete="off" required/>
     <button type="submit">Search</button>
    </form>
-   <p className="home-contribute"><Link href="/submit">Submit a sitemap <span aria-hidden="true">→</span></Link></p>
+   <p className="home-contribute"><Link href="/submit">Submit a website <span aria-hidden="true">→</span></Link></p>
   </section>
  </main>;
 }
