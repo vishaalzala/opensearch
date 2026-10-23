@@ -14,7 +14,9 @@ export function parseSitemaps(input:unknown, limit=20):
   const parsed=new URL(url);
   if(parsed.protocol!=='https:'||!/\.xml$/i.test(parsed.pathname))
    return {error:'Each sitemap must be a public HTTPS .xml URL.'};
-  normalized.push(parsed.toString());
+  // An empty query marker (sitemap.xml?) must not create a duplicate URL.
+  const clean=parsed.toString();
+  normalized.push(clean.endsWith('?')?clean.slice(0,-1):clean);
  }
  const urls=[...new Set(normalized)];
  if(!urls.length)return {error:'Enter at least one sitemap XML URL.'};
