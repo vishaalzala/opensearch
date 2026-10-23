@@ -275,3 +275,16 @@ main.submit-page{padding:54px 22px 80px}
 }
 @media(max-height:500px){.home-content{transform:none}}
 @media(prefers-reduced-motion:reduce){.home-search{transition:none}}
+
+/* Align the home wordmark, search field and supporting actions on one axis. */
+.home-content{display:flex;flex-direction:column;align-items:center;justify-content:center;transform:translateY(-17vh)}
+.home-wordmark{text-align:center;margin-bottom:34px}
+.home-search{width:100%;max-width:720px;margin:0 auto}
+.home-contribute{margin:20px 0 0}
+.home-privacy{margin:13px 0 0;max-width:600px;color:#8692a6;font-size:11px;line-height:1.6;text-align:center}
+@media(max-width:700px){
+ .home-content{transform:translateY(-9vh)}
+ .home-wordmark{margin-bottom:28px}
+ .home-privacy{padding:0 12px;font-size:11px}
+}
+@media(max-height:500px){.home-content{transform:none}}
