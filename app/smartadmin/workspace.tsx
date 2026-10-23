@@ -29,7 +29,7 @@ const TITLES:Record<Section,{title:string;description:string}>={
  crawls:{title:'Crawl monitor',description:'Follow sitemap processing, progress and individual fetch failures.'},
  admins:{title:'Administrators',description:'View authorised administrators and current access requirements.'},
  settings:{title:'Settings & health',description:'Review configuration, controls and platform readiness.'},
- 'add-sitemap':{title:'Add sitemaps',description:'Save new XML sitemaps or add more to an existing domain.'}
+ 'add-sitemap':{title:'Add website',description:'Add a website URL, XML sitemap links, or both for indexing.'}
 };
 function statusLabel(value:string){
  const labels:Record<string,string>={approved:'Approved',pending:'Pending review',rejected:'Rejected',queued:'Queued',running:'In progress',completed:'Finished',failed:'Finished with errors'};
@@ -66,7 +66,7 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
  const [updated,setUpdated]=useState('');
  const [filter,setFilter]=useState(''),[siteStatus,setSiteStatus]=useState('all');
  const [sitemapStatus,setSitemapStatus]=useState('all');
- const [submittedUrls,setSubmittedUrls]=useState(''),[indexInfo,setIndexInfo]=useState('');
+ const [submittedWebsite,setSubmittedWebsite]=useState(''),[submittedUrls,setSubmittedUrls]=useState(''),[indexInfo,setIndexInfo]=useState('');
  const field=useRef<HTMLTextAreaElement>(null);
  const activeJobs=useRef(new Set<string>());
  const [activeRuns,setActiveRuns]=useState<string[]>([]);
@@ -153,11 +153,13 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
   }
  }
  async function addSitemaps(e:FormEvent){
-  e.preventDefault();setBusy(true);setToast(null);
+  e.preventDefault();
+  if(!submittedWebsite.trim()&&!submittedUrls.trim()){notify('Enter a website URL, sitemap XML URL, or both.',false);return}
+  setBusy(true);setToast(null);
   try{
-   const d=await api('/api/admin/websites','POST',{sitemapUrls:submittedUrls});
+   const d=await api('/api/admin/websites','POST',{websiteUrl:submittedWebsite,sitemapUrls:submittedUrls});
    notify(d.message||'Sitemap submission saved.');
-   if(d.added>0||d.approvedFromPending>0)setSubmittedUrls('');
+   if(d.websiteAdded||d.added>0||d.approvedFromPending>0){setSubmittedWebsite('');setSubmittedUrls('')}
    await refresh();
    if(d.jobId)void indexAll(d.jobId,true);
   }catch(e){notify(String(e),false)}
@@ -242,7 +244,7 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
    </header>
    <div className="admin-content">
     <div className="admin-page-heading"><div><div className="admin-eyebrow">OPENSEARCH CONTROL CENTER</div><h1>{title.title}</h1><p>{title.description}</p></div><div className="admin-heading-actions">
-     <Link href="/smartadmin/add-sitemap" className="admin-btn admin-btn-primary"><AdminIcon name="plus" size={17}/> Add sitemap</Link>
+     <Link href="/smartadmin/add-sitemap" className="admin-btn admin-btn-primary"><AdminIcon name="plus" size={17}/> Add website</Link>
     </div></div>
     {toast&&<div className={'admin-notice'+(toast.success?' is-success':' is-error')} role="status"><AdminIcon name={toast.success?'check':'warning'} size={18}/><span>{toast.text}</span><button type="button" onClick={()=>setToast(null)} aria-label="Dismiss message"><AdminIcon name="close" size={15}/></button></div>}
     {error&&<div className="admin-notice is-error" role="alert"><AdminIcon name="warning" size={18}/> {error} <Btn onClick={()=>void refresh()}>Retry</Btn></div>}
@@ -320,9 +322,25 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
      </div>)}</div>{jobs.length===0&&<Empty icon="crawls" title="No crawl jobs" description="Add and approve a sitemap to start indexing."/>}
     </section>}
 
-    {section==='add-sitemap'&&<div className="admin-form-columns"><section className="admin-panel admin-form-panel"><div className="admin-panel-header"><div><h2>Submit XML sitemaps</h2><p>One URL per line · Up to 30 per submission</p></div><span className="admin-panel-emblem"><AdminIcon name="sitemap" size={22}/></span></div>
-     <form onSubmit={addSitemaps}><label htmlFor="sitemapsInput" className="admin-form-label">Sitemap XML URLs</label><textarea id="sitemapsInput" rows={7} ref={field} value={submittedUrls} onChange={e=>setSubmittedUrls(e.target.value)} className="admin-textarea" placeholder={'https://example.org/posts-sitemap.xml\nhttps://example.org/courses-sitemap.xml'} required/><p className="admin-help-text">All URLs in a submission must belong to the same domain. Already-approved sitemaps remain in the library.</p><button className="admin-btn admin-btn-primary" type="submit" disabled={busy}><AdminIcon name="plus" size={17}/>{busy?'Saving…':'Save and queue indexing'}</button></form>
-     </section><section className="admin-panel admin-guidance"><h2>How it works</h2><div className="admin-guide-step"><span>1</span><div><strong>Add sitemap links</strong><p>Provide one or more public HTTPS XML sitemap URLs.</p></div></div><div className="admin-guide-step"><span>2</span><div><strong>Save to one website</strong><p>We group URLs by domain and avoid duplicates.</p></div></div><div className="admin-guide-step"><span>3</span><div><strong>Index eligible pages</strong><p>Approved sitemap URLs are queued and processed in bounded batches.</p></div></div><div className="admin-guidance-note"><AdminIcon name="shield" size={17}/> Respect publisher crawling policies. Indexing may pause if the admin page is closed; resume from Crawl Monitor.</div>{indexInfo&&<p className="admin-muted">{indexInfo}</p>}</section></div>}
+    {section==='add-sitemap'&&<div className="admin-form-columns"><section className="admin-panel admin-form-panel">
+     <div className="admin-panel-header"><div><h2>Add website or sitemaps</h2><p>Both fields are optional individually, but at least one is required.</p></div><span className="admin-panel-emblem"><AdminIcon name="websites" size={22}/></span></div>
+     <form onSubmit={addSitemaps}>
+      <label htmlFor="admin-website-input" className="admin-form-label">Website HTTPS URL</label>
+      <input id="admin-website-input" type="url" value={submittedWebsite} onChange={e=>setSubmittedWebsite(e.target.value)}
+       placeholder="https://example.org" autoComplete="url" className="admin-textarea" style={{minHeight:0,marginBottom:18}}/>
+      <label htmlFor="sitemapsInput" className="admin-form-label">Sitemap XML URLs (optional, one per line)</label>
+      <textarea id="sitemapsInput" rows={5} ref={field} value={submittedUrls} onChange={e=>setSubmittedUrls(e.target.value)}
+       className="admin-textarea" placeholder={'https://example.org/post-sitemap.xml\nhttps://example.org/page-sitemap.xml'}/>
+      <p className="admin-help-text">Add a website by itself to discover accessible internal pages, add only XML sitemaps to derive the website automatically, or add both. All links must be HTTPS and from the same domain. Previously saved links are preserved.</p>
+      <button className="admin-btn admin-btn-primary" type="submit" disabled={busy}><AdminIcon name="plus" size={17}/>{busy?'Saving…':'Save and start indexing'}</button>
+     </form>
+     </section><section className="admin-panel admin-guidance"><h2>Indexing workflow</h2>
+      <div className="admin-guide-step"><span>1</span><div><strong>Add the website or sitemaps</strong><p>Start with a website URL, sitemap URL, or both.</p></div></div>
+      <div className="admin-guide-step"><span>2</span><div><strong>Keep existing records</strong><p>Multiple sitemaps are grouped under their website; duplicates are not added.</p></div></div>
+      <div className="admin-guide-step"><span>3</span><div><strong>Index permitted public pages</strong><p>The homepage and approved XML sitemap links feed the indexer in batches.</p></div></div>
+      <div className="admin-guidance-note"><AdminIcon name="shield" size={17}/> Indexing runs in batches and may pause if this admin session ends. Resume the job in Crawl Monitor.</div>
+      {indexInfo&&<p className="admin-muted" style={{padding:18}}>{indexInfo}</p>}
+     </section></div>}
 
     {section==='admins'&&<section className="admin-panel"><div className="admin-panel-header"><div><h2>Authorised administrators</h2><p>Allowlisted accounts connected to Supabase Auth</p></div><Pill value="approved"/></div>
      <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Username</th><th>Access</th><th>Added</th></tr></thead><tbody>{admins.map(a=><tr key={a.user_id}><td><div className="admin-user-row"><span className="admin-user-avatar">{a.username.charAt(0).toUpperCase()}</span><strong>{a.username}</strong></div></td><td><Pill value="approved"/></td><td><TinyDate date={a.created_at}/></td></tr>)}</tbody></table></div>{admins.length===0&&<Empty icon="users" title="No administrators listed" description="Check Supabase Auth allowlist configuration."/>}<div className="admin-guidance-note admin-guidance-bottom"><AdminIcon name="shield" size={17}/> Admin creation and password changes are intentionally managed through Supabase Auth. This screen does not expose passwords or allow self-granting access.</div>
