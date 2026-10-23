@@ -3,12 +3,28 @@ import {validWebsite} from './safety';
 import {safeFetch,locations,extract} from './sitemap-indexer';
 const LIMIT=10000;
 export async function startCrawl(site:{id:string;url:string;sitemap_url:string|null}) {
- const {data:job,error}=await db().from('crawl_jobs').insert({website_id:site.id,status:'queued'}).select('id').single();
+ const database=db();
+ const {data:sitemaps,error:lookupError}=await database.from('website_sitemaps')
+  .select('url').eq('website_id',site.id).eq('status','approved').order('created_at',{ascending:true}).limit(500);
+ if(lookupError)throw Error('Unable to load approved sitemaps');
+ const sitemapUrls=[...new Set((sitemaps||[]).map(s=>s.url))];
+ // Legacy fallback when an older site's sitemap has not yet been migrated.
+ if(!sitemapUrls.length && site.sitemap_url)sitemapUrls.push(site.sitemap_url);
+ if(!sitemapUrls.length)throw Error('No approved sitemap URLs available');
+ const {data:job,error}=await database.from('crawl_jobs').insert({website_id:site.id,status:'queued'}).select('id').single();
  if(error||!job)throw Error('Failed to start crawl');
- const sitemap=site.sitemap_url||new URL('/sitemap.xml',site.url).toString();
- const initial=[{job_id:job.id,url:sitemap,kind:'sitemap'},{job_id:job.id,url:site.url,kind:'page'}];
- const {error:queueError}=await db().from('crawl_queue').insert(initial);
- if(queueError)throw Error('Failed to queue sitemap');
+ const initial=[
+  ...sitemapUrls.map(url=>({job_id:job.id,url,kind:'sitemap'})),
+  {job_id:job.id,url:site.url,kind:'page'}
+ ];
+ for(let i=0;i<initial.length;i+=100){
+  const {error:queueError}=await database.from('crawl_queue').upsert(initial.slice(i,i+100),
+   {onConflict:'job_id,url,kind',ignoreDuplicates:true});
+  if(queueError){
+   await database.from('crawl_jobs').update({status:'failed',error:'Failed to queue approved sitemaps'}).eq('id',job.id);
+   throw Error('Failed to queue approved sitemaps');
+  }
+ }
  return job.id as string;
 }
 export async function runCrawlBatch(jobId:string) {
