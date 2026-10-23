@@ -10,6 +10,7 @@ declare global {
 }
 type Notice={success:boolean;text:string;added?:number;duplicates?:number;website?:string};
 export default function Submit(){
+ const [websiteUrl,setWebsiteUrl]=useState('');
  const [sitemapUrls,setSitemapUrls]=useState('');
  const [token,setToken]=useState('');
  const [notice,setNotice]=useState<Notice|null>(null);
@@ -28,18 +29,20 @@ export default function Submit(){
  },[sitekey]);
 
  async function submit(e:React.FormEvent){
-  e.preventDefault();setBusy(true);setNotice(null);
+  e.preventDefault();
+  if(!websiteUrl.trim()&&!sitemapUrls.trim()){setNotice({success:false,text:'Enter a website URL or a sitemap XML URL.'});return}
+  setBusy(true);setNotice(null);
   try{
    const r=await fetch('/api/submit',{
     method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({sitemapUrls,token,companyWebsite:''})
+    body:JSON.stringify({websiteUrl,sitemapUrls,token,companyWebsite:''})
    });
    const d=await r.json();
    if(!r.ok) {
     setNotice({success:false,text:d.error||'Submission failed. Please retry.'});
    }else{
     setNotice({success:true,text:d.message||'Submission saved.',added:d.added,duplicates:d.duplicates,website:d.website});
-    if(d.added>0)setSitemapUrls('');
+    if(d.added>0||d.websiteAdded){setWebsiteUrl('');setSitemapUrls('');}
    }
   }catch{setNotice({success:false,text:'Cannot reach the server. Please retry.'})}
   finally{
@@ -52,21 +55,24 @@ export default function Submit(){
   <a href="/" aria-label="OpenSearch home" style={{display:'inline-block',marginBottom:12,textDecoration:'none'}}>
    <span className="brand">Open<span>Search</span></span>
   </a>
-  <h1>Submit sitemaps</h1>
-  <p className="muted">Suggest one or more XML sitemaps. New links are reviewed before indexing.</p>
+  <h1>Submit a website</h1>
+  <p className="muted">Enter a website, a sitemap, or both. We'll review new submissions before indexing.</p>
   <form onSubmit={submit}>
-   <label htmlFor="sitemaps">Sitemap XML URLs (one per line)</label>
-   <textarea id="sitemaps" ref={field} rows={5} value={sitemapUrls} onChange={e=>setSitemapUrls(e.target.value)}
-    placeholder={'https://example.com/posts-sitemap.xml\nhttps://example.com/courses-sitemap.xml'} required/>
-   <p className="muted" style={{fontSize:12}}>One URL per line · Same website · Maximum 20 links.</p>
+   <label htmlFor="website">Website URL <span className="muted">(optional if a sitemap is provided)</span></label>
+   <input id="website" type="url" value={websiteUrl} onChange={e=>setWebsiteUrl(e.target.value)}
+    placeholder="https://example.com" autoComplete="url"/>
+   <label htmlFor="sitemaps">Sitemap XML URLs <span className="muted">(optional)</span></label>
+   <textarea id="sitemaps" ref={field} rows={4} value={sitemapUrls} onChange={e=>setSitemapUrls(e.target.value)}
+    placeholder={'https://example.com/post-sitemap.xml\nhttps://example.com/page-sitemap.xml'}/>
+   <p className="muted" style={{fontSize:12}}>Add at least one URL. Use HTTPS and the same domain for all links. If you don't have a sitemap, we can discover accessible pages from the homepage after approval.</p>
    <div id="turnstile" style={{marginBottom:sitekey?16:0}}/>
-   <button disabled={busy||!!sitekey&&!token}>{busy?'Saving sitemaps…':'Submit for review'}</button>
+   <button disabled={busy||!!sitekey&&!token}>{busy?'Submitting…':'Submit for review'}</button>
   </form>
   {notice&&<div role="status" aria-live="polite" className="panel" style={{margin:'18px 0 0',padding:16,background:notice.success?'#f4fbf7':'#fff6f4',borderColor:notice.success?'#bfe8d0':'#f0c7c4'}}>
    <strong>{notice.success?'Submission confirmed':'Submission not saved'}</strong>
    <p style={{marginBottom:8}}>{notice.text}</p>
    {notice.website&&<p className="muted" style={{fontSize:13}}>Website: {notice.website}</p>}
-   {notice.success&&<button type="button" className="secondary" onClick={()=>{setSitemapUrls('');setNotice(null);field.current?.focus()}}>Add another sitemap</button>}
+   {notice.success&&<button type="button" className="secondary" onClick={()=>{setWebsiteUrl('');setSitemapUrls('');setNotice(null);document.getElementById('website')?.focus()}}>Add another website or sitemap</button>}
   </div>}
  </div></main>;
 }
