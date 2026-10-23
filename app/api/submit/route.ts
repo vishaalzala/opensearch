@@ -25,10 +25,11 @@ export async function POST(request:NextRequest){
   if(!allowed)return NextResponse.json({error:'Submission limit reached. Please try again in an hour.'},{status:429});
 
   const secret=process.env.TURNSTILE_SECRET_KEY;
+  const turnstileEnabled=!!secret&&!!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
   const token=String(payload.token||'');
   // When Turnstile is fully configured we require it. Otherwise the server-side
   // rate limiter and mandatory admin approval protect this early-access form.
-  if(secret) {
+  if(turnstileEnabled && secret) {
    if(!token)return NextResponse.json({error:'Complete the verification before submitting'},{status:400});
    const check=await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify',{
     method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
