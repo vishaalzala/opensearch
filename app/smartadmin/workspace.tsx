@@ -93,25 +93,29 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
  function notify(text:string,success=true){setToast({text,success})}
  async function refresh(){
   setError('');
+  // Each section fetches only the data it actually needs. This keeps
+  // admin navigation independent of large crawler/metrics queries.
   try{
-   const [siteData,jobData,metricData]=await Promise.all([
-    getJSON('/api/admin/submissions'),getJSON('/api/admin/crawl'),getJSON('/api/admin/overview')
+   const needsSites=['overview','websites','sitemaps','submissions','pages'].includes(section);
+   const needsJobs=['overview','websites','crawls'].includes(section);
+   const needsMetrics=['overview','settings'].includes(section);
+   const needsAdmins=section==='admins';
+   const [siteData,jobData,metricData,adminData]=await Promise.all([
+    needsSites?getJSON('/api/admin/submissions'):Promise.resolve(null),
+    needsJobs?getJSON('/api/admin/crawl'):Promise.resolve(null),
+    needsMetrics?getJSON('/api/admin/overview'):Promise.resolve(null),
+    needsAdmins?getJSON('/api/admin/admins'):Promise.resolve(null)
    ]);
-   setSites(siteData.websites||[]);
-   setJobs(jobData.jobs||[]);
-   setMetrics(metricData);
+   if(siteData)setSites(siteData.websites||[]);
+   if(jobData)setJobs(jobData.jobs||[]);
+   if(metricData)setMetrics(metricData);
+   if(adminData)setAdmins(adminData.admins||[]);
    setUpdated(new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
   }catch(e){setError(e instanceof Error?e.message:'Could not load administrator data')}
   finally{setLoading(false)}
  }
- useEffect(()=>{void refresh()},[]);
+ useEffect(()=>{setLoading(true);void refresh()},[section]);
  useEffect(()=>{setMobileMenu(false);setToast(null);setFilter('')},[section]);
- useEffect(()=>{
-  if(section!=='admins')return;
-  let active=true;
-  getJSON('/api/admin/admins').then(d=>{if(active)setAdmins(d.admins||[])}).catch(e=>{if(active)setError(String(e))});
-  return()=>{active=false};
- },[section]);
  useEffect(()=>{
   if(section!=='pages')return;
   let active=true;setPageLoading(true);
