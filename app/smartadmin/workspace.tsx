@@ -67,6 +67,7 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
  const [filter,setFilter]=useState(''),[siteStatus,setSiteStatus]=useState('all');
  const [sitemapStatus,setSitemapStatus]=useState('all');
  const [submittedType,setSubmittedType]=useState<'website'|'forum'>('website');
+ const [changeExistingType,setChangeExistingType]=useState(false);
  const [submittedWebsite,setSubmittedWebsite]=useState(''),[submittedUrls,setSubmittedUrls]=useState(''),[indexInfo,setIndexInfo]=useState('');
  const field=useRef<HTMLTextAreaElement>(null);
  const activeJobs=useRef(new Set<string>());
@@ -162,7 +163,7 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
   if(!submittedWebsite.trim()&&!submittedUrls.trim()){notify('Enter a website URL, sitemap XML URL, or both.',false);return}
   setBusy(true);setToast(null);
   try{
-   const d=await api('/api/admin/websites','POST',{websiteUrl:submittedWebsite,sitemapUrls:submittedUrls,siteType:submittedType});
+   const d=await api('/api/admin/websites','POST',{websiteUrl:submittedWebsite,sitemapUrls:submittedUrls,siteType:submittedType,changeExistingType});
    notify(d.message||'Sitemap submission saved.');
    if(d.websiteAdded||d.added>0||d.approvedFromPending>0){setSubmittedWebsite('');setSubmittedUrls('')}
    await refresh();
@@ -343,7 +344,12 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
       <label htmlFor="sitemapsInput" className="admin-form-label">Sitemap XML URLs (optional, one per line)</label>
       <textarea id="sitemapsInput" rows={5} ref={field} value={submittedUrls} onChange={e=>setSubmittedUrls(e.target.value)}
        className="admin-textarea" placeholder={'https://example.org/post-sitemap.xml\nhttps://example.org/page-sitemap.xml'}/>
-      <p className="admin-help-text">Add a website by itself to discover accessible internal pages, add only XML sitemaps to derive the website automatically, or add both. All links must be HTTPS and from the same domain. Previously saved links are preserved.</p>
+      <p className="admin-help-text">Add a website to crawl its public links, supply sitemaps, or both. Existing entries are preserved. All links must be HTTPS and from the same domain.</p>
+      <label style={{display:'flex',gap:10,alignItems:'center',fontSize:12,color:'#536681',marginBottom:18}}>
+       <input type="checkbox" checked={changeExistingType} onChange={e=>setChangeExistingType(e.target.checked)}
+        style={{width:16,height:16,accentColor:'#3165df'}}/>
+       Also change indexing type if this website already exists
+      </label>
       <button className="admin-btn admin-btn-primary" type="submit" disabled={busy}><AdminIcon name="plus" size={17}/>{busy?'Saving…':'Save and start indexing'}</button>
      </form>
      </section><section className="admin-panel admin-guidance"><h2>Indexing workflow</h2>
