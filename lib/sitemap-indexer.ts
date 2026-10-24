@@ -22,7 +22,7 @@ async function checkUrl(input:string,origin:string) {
  if(!ips.length||ips.some(x=>!addressIsPublic(x.address)))throw Error('Blocked network address');
  return u.toString();
 }
-export async function safeFetch(input:string,host:string,maxBytes:number,kind:'xml'|'html') {
+export async function safeFetch(input:string,host:string,maxBytes:number,kind:'xml'|'html'|'robots') {
  const url=await checkUrl(input,host);
  let current=url;
  let response:Response|null=null;
@@ -30,7 +30,7 @@ export async function safeFetch(input:string,host:string,maxBytes:number,kind:'x
   // Follow only verified redirects within the approved HTTPS host.
   response=await fetch(current,{redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(7000),headers:{
    'User-Agent':'OpenSearchBot/0.1 (+https://opensearch-pi.vercel.app)',
-   'Accept':kind==='xml'?'application/xml,text/xml':'text/html,application/xhtml+xml'
+   'Accept':kind==='xml'?'application/xml,text/xml':kind==='robots'?'text/plain':'text/html,application/xhtml+xml'
   }});
   if([301,302,303,307,308].includes(response.status)){
    const location=response.headers.get('location');
@@ -45,6 +45,7 @@ export async function safeFetch(input:string,host:string,maxBytes:number,kind:'x
  if(!response.ok)throw Error('HTTP '+response.status+' from source website');
  const type=response.headers.get('content-type')||'unspecified';
  if(kind==='xml'&&!/(xml|text\/plain)/i.test(type))throw Error('Expected XML, received '+type.slice(0,80));
+ if(kind==='robots'&&!/text\/plain/i.test(type))throw Error('Expected robots text, received '+type.slice(0,80));
  if(kind==='html'&&!/(text\/html|application\/xhtml\+xml)/i.test(type))throw Error('Not an HTML page ('+type.slice(0,80)+')');
  const reader=response.body?.getReader();
  if(!reader)throw Error('Missing response body');
