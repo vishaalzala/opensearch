@@ -2,6 +2,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {createHmac} from 'node:crypto';
 import {db} from '../../../lib/db';
 import {parseWebsiteSubmission} from '../../../lib/sitemaps';
+import {siteTypeOf} from '../../../lib/forum';
 
 export async function POST(request:NextRequest){
  const payload=await request.json().catch(()=>null);
@@ -11,6 +12,8 @@ export async function POST(request:NextRequest){
   return NextResponse.json({ok:true,status:'pending',added:0,duplicates:0,message:'Submission received.'});
  const parsed=parseWebsiteSubmission({websiteUrl:payload.websiteUrl,sitemapUrls:payload.sitemapUrls??payload.sitemapUrl},20);
  if('error' in parsed)return NextResponse.json({error:parsed.error},{status:400});
+ const siteType=siteTypeOf(payload.siteType);
+ if(!siteType)return NextResponse.json({error:'Select Website or Forum'},{status:400});
  try {
   const database=db();
   const ip=request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||
@@ -41,14 +44,14 @@ export async function POST(request:NextRequest){
   }
 
   const {data:found,error:findError}=await database.from('websites')
-   .select('id,status').eq('url',parsed.websiteUrl).maybeSingle();
+   .select('id,status,site_type').eq('url',parsed.websiteUrl).maybeSingle();
   if(findError)throw findError;
   let websiteId:string|undefined=found?.id;
   let websiteAdded=false;
   if(!websiteId) {
    const {data:created,error:createError}=await database.from('websites')
     .insert({url:parsed.websiteUrl,title:new URL(parsed.websiteUrl).hostname,
-      sitemap_url:parsed.urls[0]||null,status:'pending'}).select('id').single();
+      sitemap_url:parsed.urls[0]||null,site_type:siteType,status:'pending'}).select('id').single();
    if(createError) {
     if(createError.code!=='23505')throw createError;
     const {data:existing,error:e}=await database.from('websites')
@@ -71,14 +74,15 @@ export async function POST(request:NextRequest){
   const duplicates=parsed.urls.length-count;
   const status=websiteAdded||count>0?'pending':'duplicate';
   let message='';
-  if(websiteAdded)message='Website submitted for admin review.';
+  if(websiteAdded)message=siteType==='forum'?'Forum submitted for admin review.':'Website submitted for admin review.';
   else if(!parsed.urls.length)message=found?.status==='approved'
      ?'This website is already approved. You can add a sitemap to suggest more pages.'
      :'This website is already awaiting review.';
   if(count)message+=(message?' ':'')+count+' new sitemap'+(count===1?'':'s')+' awaiting review.';
+  if(found&&found.site_type!==siteType)message+=(message?' ':'')+'This site is already registered as a '+found.site_type+'; an administrator can change its indexing type.';
   if(duplicates)message+=(message?' ':'')+duplicates+' sitemap'+(duplicates===1?' was':'s were')+' already submitted.';
   return NextResponse.json({
-   ok:true,status,added:count,websiteAdded,duplicates,website:parsed.websiteUrl,
+   ok:true,status,added:count,websiteAdded,duplicates,website:parsed.websiteUrl,siteType:found?.site_type||siteType,
    message:message||'This website and its sitemaps were already submitted.'
   },{status:websiteAdded||count>0?201:200,headers:{'Cache-Control':'no-store'}});
  }catch{
