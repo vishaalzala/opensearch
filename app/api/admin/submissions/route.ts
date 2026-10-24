@@ -5,7 +5,7 @@ import {startCrawl} from '../../../../lib/crawl-queue';
 export const maxDuration=60;
 export async function GET(){
  if(!await isAdmin())return NextResponse.json({error:'Unauthorized'},{status:401});
- const {data,error}=await db().from('websites').select('id,url,title,description,sitemap_url,status,submitted_at,website_sitemaps(id,url,status)').order('submitted_at',{ascending:false}).limit(100);
+ const {data,error}=await db().from('websites').select('id,url,title,description,sitemap_url,site_type,status,submitted_at,website_sitemaps(id,url,status)').order('submitted_at',{ascending:false}).limit(100);
  return error?NextResponse.json({error:'Database error'},{status:503}):NextResponse.json({websites:data});
 }
 export async function PATCH(req:NextRequest){
