@@ -5,6 +5,13 @@ import {forumLink,forumRobots,forumThread,forumPage,noIndex,nonCanonical} from '
 const LIMIT=10000;
 export async function startCrawl(site:{id:string;url:string;sitemap_url:string|null}) {
  const database=db();
+ const {data:config,error:configError}=await database.from('websites')
+  .select('site_type,crawl_start_url').eq('id',site.id).single();
+ if(configError)throw Error('Unable to load crawl configuration');
+ const forumStart=config?.site_type==='forum'&&config.crawl_start_url&&
+   validWebsite(config.crawl_start_url)&&
+   new URL(config.crawl_start_url).hostname===new URL(site.url).hostname?
+   config.crawl_start_url:site.url;
  const {data:sitemaps,error:lookupError}=await database.from('website_sitemaps')
   .select('url').eq('website_id',site.id).eq('status','approved').order('created_at',{ascending:true}).limit(500);
  if(lookupError)throw Error('Unable to load approved sitemaps');
@@ -15,7 +22,7 @@ export async function startCrawl(site:{id:string;url:string;sitemap_url:string|n
  if(error||!job)throw Error('Failed to start crawl');
  const initial=[
   ...sitemapUrls.map(url=>({job_id:job.id,url,kind:'sitemap'})),
-  {job_id:job.id,url:site.url,kind:'page'}
+  {job_id:job.id,url:forumStart,kind:'page'}
  ];
  for(let i=0;i<initial.length;i+=100){
   const {error:queueError}=await database.from('crawl_queue').upsert(initial.slice(i,i+100),
