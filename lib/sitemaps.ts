@@ -1,6 +1,6 @@
 import {validWebsite} from './safety';
 
-export type ParsedSubmission={websiteUrl:string;urls:string[];websiteProvided:boolean};
+export type ParsedSubmission={websiteUrl:string;startUrl:string|null;urls:string[];websiteProvided:boolean};
 
 /** Website URL, same-origin XML sitemap URLs, or both. */
 export function parseWebsiteSubmission(input:{websiteUrl?:unknown;sitemapUrls?:unknown;sitemapUrl?:unknown},limit=20):
@@ -12,10 +12,14 @@ export function parseWebsiteSubmission(input:{websiteUrl?:unknown;sitemapUrls?:u
  if(links.length>limit)return {error:'Add no more than '+limit+' sitemaps per submission.'};
  if(!supplied&&!links.length)return {error:'Enter a website URL or at least one sitemap XML URL.'};
  let websiteUrl='';
+ let startUrl:string|null=null;
  if(supplied){
   const valid=validWebsite(supplied);
   if(!valid||new URL(valid).protocol!=='https:')return {error:'Website must use a valid public HTTPS URL.'};
-  websiteUrl=new URL(valid).origin+'/';
+  const submitted=new URL(valid);
+  websiteUrl=submitted.origin+'/';
+  submitted.search='';submitted.hash='';
+  startUrl=submitted.toString();
  }
  const urls:string[]=[];
  for(const entry of links){
@@ -32,7 +36,7 @@ export function parseWebsiteSubmission(input:{websiteUrl?:unknown;sitemapUrls?:u
  if(!websiteUrl&&unique.length)websiteUrl=new URL(unique[0]).origin+'/';
  if(unique.some(url=>new URL(url).origin!==new URL(websiteUrl).origin))
   return {error:'Website and sitemap URLs must have the same HTTPS origin (including www).'};
- return {websiteUrl,urls:unique,websiteProvided:!!supplied};
+ return {websiteUrl,startUrl,urls:unique,websiteProvided:!!supplied};
 }
 
 /** Backwards-compatible validator for callers that only submit XML sitemaps. */
