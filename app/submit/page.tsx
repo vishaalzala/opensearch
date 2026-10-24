@@ -11,6 +11,7 @@ declare global {
 type Notice={success:boolean;text:string;added?:number;duplicates?:number;website?:string};
 export default function Submit(){
  const [websiteUrl,setWebsiteUrl]=useState('');
+ const [siteType,setSiteType]=useState<'website'|'forum'>('website');
  const [sitemapUrls,setSitemapUrls]=useState('');
  const [token,setToken]=useState('');
  const [notice,setNotice]=useState<Notice|null>(null);
@@ -35,7 +36,7 @@ export default function Submit(){
   try{
    const r=await fetch('/api/submit',{
     method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({websiteUrl,sitemapUrls,token,companyWebsite:''})
+    body:JSON.stringify({websiteUrl,sitemapUrls,siteType,token,companyWebsite:''})
    });
    const d=await r.json();
    if(!r.ok) {
@@ -55,9 +56,16 @@ export default function Submit(){
   <a href="/" aria-label="OpenSearch home" style={{display:'inline-block',marginBottom:12,textDecoration:'none'}}>
    <span className="brand">Open<span>Search</span></span>
   </a>
-  <h1>Submit a website</h1>
-  <p className="muted">Enter a website, a sitemap, or both. We'll review new submissions before indexing.</p>
+  <h1>Submit a website or forum</h1>
+  <p className="muted">Suggest a public website or discussion forum for OpenSearch indexing. All submissions are reviewed.</p>
   <form onSubmit={submit}>
+   <label htmlFor="site-type">Site type</label>
+   <select id="site-type" value={siteType} onChange={e=>setSiteType(e.target.value as 'website'|'forum')}
+    style={{width:'100%',padding:'13px 15px',marginBottom:16,border:'1px solid #dce1ea',borderRadius:11,background:'#fff'}}>
+    <option value="website">Website / blog</option>
+    <option value="forum">Discussion forum</option>
+   </select>
+   {siteType==='forum'&&<p className="muted" style={{fontSize:12}}>Only publicly accessible threads are indexed. Login, member profiles and private messages are excluded. Public forum sitemaps are recommended.</p>}
    <label htmlFor="website">Website URL <span className="muted">(optional if a sitemap is provided)</span></label>
    <input id="website" type="url" value={websiteUrl} onChange={e=>setWebsiteUrl(e.target.value)}
     placeholder="https://example.com" autoComplete="url"/>
