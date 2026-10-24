@@ -7,7 +7,7 @@ import {AdminIcon} from './icons';
 import type {AdminIconName} from './icons';
 
 type Sitemap={id:string;url:string;status:'approved'|'pending'|'rejected'};
-type Site={id:string;url:string;title:string;description:string;status:'approved'|'pending'|'rejected';submitted_at:string;website_sitemaps?:Sitemap[]};
+type Site={id:string;url:string;title:string;description:string;site_type?:'website'|'forum';status:'approved'|'pending'|'rejected';submitted_at:string;website_sitemaps?:Sitemap[]};
 type Job={id:string;website_id:string;status:'queued'|'running'|'completed'|'failed';discovered:number;processed:number;indexed:number;failed:number;error?:string|null;created_at:string;updated_at?:string;websites?:{url:string}|null};
 type Page={id:string;website_id:string;url:string;title:string;description:string;is_published:boolean;updated_at:string};
 type Counts=Record<'websites'|'approved'|'pendingWebsites'|'pendingSitemaps'|'sitemaps'|'indexedPages'|'allPages'|'queuedJobs'|'runningJobs'|'failedJobs'|'completedJobs'|'failedUrls',number>;
@@ -29,10 +29,10 @@ const TITLES:Record<Section,{title:string;description:string}>={
  crawls:{title:'Crawl monitor',description:'Follow sitemap processing, progress and individual fetch failures.'},
  admins:{title:'Administrators',description:'View authorised administrators and current access requirements.'},
  settings:{title:'Settings & health',description:'Review configuration, controls and platform readiness.'},
- 'add-sitemap':{title:'Add website',description:'Add a website URL, XML sitemap links, or both for indexing.'}
+ 'add-sitemap':{title:'Add website',description:'Add a website or forum, with optional XML sitemaps for indexing.'}
 };
 function statusLabel(value:string){
- const labels:Record<string,string>={approved:'Approved',pending:'Pending review',rejected:'Rejected',queued:'Queued',running:'In progress',completed:'Finished',failed:'Finished with errors'};
+ const labels:Record<string,string>={forum:'Forum',website:'Website',approved:'Approved',pending:'Pending review',rejected:'Rejected',queued:'Queued',running:'In progress',completed:'Finished',failed:'Finished with errors'};
  return labels[value]||value;
 }
 function Pill({value}:{value:string}){
@@ -66,6 +66,7 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
  const [updated,setUpdated]=useState('');
  const [filter,setFilter]=useState(''),[siteStatus,setSiteStatus]=useState('all');
  const [sitemapStatus,setSitemapStatus]=useState('all');
+ const [submittedType,setSubmittedType]=useState<'website'|'forum'>('website');
  const [submittedWebsite,setSubmittedWebsite]=useState(''),[submittedUrls,setSubmittedUrls]=useState(''),[indexInfo,setIndexInfo]=useState('');
  const field=useRef<HTMLTextAreaElement>(null);
  const activeJobs=useRef(new Set<string>());
@@ -161,7 +162,7 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
   if(!submittedWebsite.trim()&&!submittedUrls.trim()){notify('Enter a website URL, sitemap XML URL, or both.',false);return}
   setBusy(true);setToast(null);
   try{
-   const d=await api('/api/admin/websites','POST',{websiteUrl:submittedWebsite,sitemapUrls:submittedUrls});
+   const d=await api('/api/admin/websites','POST',{websiteUrl:submittedWebsite,sitemapUrls:submittedUrls,siteType:submittedType});
    notify(d.message||'Sitemap submission saved.');
    if(d.websiteAdded||d.added>0||d.approvedFromPending>0){setSubmittedWebsite('');setSubmittedUrls('')}
    await refresh();
@@ -284,7 +285,7 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
     </>}
 
     {section==='websites'&&<section className="admin-panel"><div className="admin-panel-header"><div><h2>Website directory</h2><p>{sites.length} sites in the latest 100 records</p></div><div className="admin-filter-row"><div className="admin-search-field"><AdminIcon name="search" size={16}/><input aria-label="Find websites" placeholder="Search domains…" value={filter} onChange={e=>setFilter(e.target.value)}/></div><select aria-label="Website status" value={siteStatus} onChange={e=>setSiteStatus(e.target.value)}><option value="all">All statuses</option><option value="approved">Approved</option><option value="pending">Pending</option><option value="rejected">Rejected</option></select></div></div>
-     <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Website</th><th>Approval</th><th>Indexing</th><th>Sitemaps</th><th>Last run</th><th>Actions</th></tr></thead><tbody>{filteredSites.map(s=><tr key={s.id}><td><span className="admin-strong">{s.title||new URL(s.url).hostname}</span><a className="admin-sub-link" href={s.url} rel="noreferrer noopener" target="_blank">{s.url} <AdminIcon name="external" size={12}/></a></td><td><Pill value={s.status}/></td><td>{s.status==='approved'?<Pill value={latestJobs.get(s.id)?.status||'none'}/>:<span className="admin-muted">—</span>}</td><td>{s.website_sitemaps?.length??0}</td><td><TinyDate date={latestJobs.get(s.id)?.created_at}/></td><td><div className="admin-actions">{s.status!=='approved'&&<Btn disabled={busy} kind="primary" onClick={()=>void reviewSite(s,'approved')}>Approve</Btn>}{s.status==='approved'&&<Btn disabled={busy} icon="refresh" onClick={()=>void startCrawl(s)}>Reindex</Btn>}<Btn disabled={busy} kind="soft" onClick={()=>void reviewSite(s,'rejected')}>Reject</Btn></div></td></tr>)}</tbody></table></div>
+     <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Website</th><th>Type</th><th>Approval</th><th>Indexing</th><th>Sitemaps</th><th>Last run</th><th>Actions</th></tr></thead><tbody>{filteredSites.map(s=><tr key={s.id}><td><span className="admin-strong">{s.title||new URL(s.url).hostname}</span><a className="admin-sub-link" href={s.url} rel="noreferrer noopener" target="_blank">{s.url} <AdminIcon name="external" size={12}/></a></td><td><Pill value={s.site_type==='forum'?'forum':'website'}/></td><td><Pill value={s.status}/></td><td>{s.status==='approved'?<Pill value={latestJobs.get(s.id)?.status||'none'}/>:<span className="admin-muted">—</span>}</td><td>{s.website_sitemaps?.length??0}</td><td><TinyDate date={latestJobs.get(s.id)?.created_at}/></td><td><div className="admin-actions">{s.status!=='approved'&&<Btn disabled={busy} kind="primary" onClick={()=>void reviewSite(s,'approved')}>Approve</Btn>}{s.status==='approved'&&<Btn disabled={busy} icon="refresh" onClick={()=>void startCrawl(s)}>Reindex</Btn>}<Btn disabled={busy} kind="soft" onClick={()=>void reviewSite(s,'rejected')}>Reject</Btn></div></td></tr>)}</tbody></table></div>
      {filteredSites.length===0&&<Empty icon="websites" title="No matching websites" description="Try another filter or add a sitemap."/>}
     </section>}
 
@@ -295,7 +296,7 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
 
     {section==='submissions'&&<div className="admin-dashboard-columns">
      <section className="admin-panel"><div className="admin-panel-header"><div><h2>Website approvals</h2><p>{metrics?.counts.pendingWebsites??pendingSites.length} awaiting review</p></div></div>
-      {pendingSites.length===0?<Empty icon="check" title="No pending websites" description="New website submissions will appear here."/>:pendingSites.map(s=><div className="admin-review-card" key={s.id}><div><strong>{s.title||s.url}</strong><small>{s.url}</small><small><TinyDate date={s.submitted_at}/></small></div><div className="admin-actions"><Btn disabled={busy} kind="primary" onClick={()=>void reviewSite(s,'approved')}>Approve</Btn><Btn disabled={busy} onClick={()=>void reviewSite(s,'rejected')}>Reject</Btn></div></div>)}
+      {pendingSites.length===0?<Empty icon="check" title="No pending websites" description="New website submissions will appear here."/>:pendingSites.map(s=><div className="admin-review-card" key={s.id}><div><strong>{s.title||s.url}</strong><small>{s.url} · {s.site_type==='forum'?'Discussion forum':'Website'}</small><small><TinyDate date={s.submitted_at}/></small></div><div className="admin-actions"><Btn disabled={busy} kind="primary" onClick={()=>void reviewSite(s,'approved')}>Approve</Btn><Btn disabled={busy} onClick={()=>void reviewSite(s,'rejected')}>Reject</Btn></div></div>)}
      </section>
      <section className="admin-panel"><div className="admin-panel-header"><div><h2>Sitemap approvals</h2><p>{metrics?.counts.pendingSitemaps??pendingSitemaps.length} awaiting review</p></div></div>
       {pendingSitemaps.length===0?<Empty icon="check" title="No pending sitemaps" description="Community sitemap suggestions will appear here."/>:pendingSitemaps.map(sm=><div className="admin-review-card" key={sm.id}><div><strong className="admin-break">{sm.url}</strong><small>{sm.website_url}</small></div><div className="admin-actions"><Btn disabled={busy} kind="primary" onClick={()=>void reviewSitemap(sm,'approved')}>Approve</Btn><Btn disabled={busy} onClick={()=>void reviewSitemap(sm,'rejected')}>Reject</Btn></div></div>)}
@@ -327,8 +328,15 @@ export function AdminWorkspace({onLogout}:{onLogout:()=>void}){
     </section>}
 
     {section==='add-sitemap'&&<div className="admin-form-columns"><section className="admin-panel admin-form-panel">
-     <div className="admin-panel-header"><div><h2>Add website or sitemaps</h2><p>Both fields are optional individually, but at least one is required.</p></div><span className="admin-panel-emblem"><AdminIcon name="websites" size={22}/></span></div>
+     <div className="admin-panel-header"><div><h2>Add a website or discussion forum</h2><p>Both fields are optional individually, but at least one is required.</p></div><span className="admin-panel-emblem"><AdminIcon name="websites" size={22}/></span></div>
      <form onSubmit={addSitemaps}>
+      <label htmlFor="admin-site-type" className="admin-form-label">Site type</label>
+      <select id="admin-site-type" value={submittedType} onChange={e=>setSubmittedType(e.target.value as 'website'|'forum')}
+        style={{width:'100%',border:'1px solid #dce5f1',borderRadius:10,padding:'12px 14px',background:'#fff',marginBottom:18}}>
+        <option value="website">Website / blog</option>
+        <option value="forum">Discussion forum</option>
+      </select>
+      {submittedType==='forum'&&<p className="admin-help-text">Forum mode prioritises publicly accessible discussion threads, respects robots.txt and noindex, and skips login, member profiles and internal search URLs. Forum XML sitemaps are recommended.</p>}
       <label htmlFor="admin-website-input" className="admin-form-label">Website HTTPS URL</label>
       <input id="admin-website-input" type="url" value={submittedWebsite} onChange={e=>setSubmittedWebsite(e.target.value)}
        placeholder="https://example.org" autoComplete="url" className="admin-textarea" style={{minHeight:0,marginBottom:18}}/>
