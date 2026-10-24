@@ -61,3 +61,21 @@ The independent worker is `GET /api/cron/crawl`. Vercel Cron invokes it hourly v
 ## Privacy copy
 
 The public homepage says OpenSearch does not store search history in its application database or use IP addresses to build search profiles. Hosting and security providers may still process request metadata as needed for network delivery and abuse protection. Public form rate-limiting uses a keyed hash derived from the requesting IP address rather than saving its raw value in the quota table.
+
+## Forum indexing (initial release)
+
+The website submission pages now provide two explicit site types: **Website / blog** and **Discussion forum**. Forum mode uses the SAME crawl queue, review process, job monitoring, search index and serverless cron worker as regular websites. No existing website is converted automatically.
+
+### Forum pipeline
+
+1. Submit a forum URL and preferably its public XML sitemap(s).
+2. Public requests require administrator approval. Admins may add a forum directly.
+3. The crawler checks the forum's `robots.txt` and applies a reduced two-request batch size with a per-request delay. It does not access logins, user profiles, search endpoints, private messages or attachments.
+4. HTML category/home pages are used for link discovery. Recognised public discussion-thread pages are indexed with `page_type='forum_thread'`, extracting the title, metadata and visible text (including supported `DiscussionForumPosting` JSON-LD).
+5. `noindex` directives and noncanonical discussion URLs are excluded from newly published forum results. Public pages appear through the existing keyword search API.
+
+Recognised thread patterns include Discourse-style `/t/...`, XenForo `/threads/...`, phpBB `viewtopic.php?t=...`, and common `/topic/` and `/discussion/` URLs. Other platforms may need a future custom connector. JavaScript-rendered-only replies, authenticated content, files and hidden discussions are NOT fetched. Sitemaps are recommended for accurate discovery.
+
+**Existing websites:** An administrator must explicitly enable the “Also change indexing type if this website already exists” checkbox before changing an established site's mode. Public submissions cannot switch an existing approved site's indexing type.
+
+**Limits:** 10,000 queued URLs per job; external cron needs `CRON_SECRET`; automatic recurring refreshes of edited forum threads are not yet implemented. Always obey publisher access restrictions and reasonable rate limits.
