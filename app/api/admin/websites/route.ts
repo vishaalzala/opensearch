@@ -28,7 +28,9 @@ export async function POST(req:NextRequest){
     if(error)throw error;
     approvedWebsite=true;
    }
-   if(existing.site_type!==siteType){
+   // Changing the indexing mode of an existing site is a separate explicit action.
+   // Adding an additional sitemap must never silently flip forum mode.
+   if(body?.changeExistingType===true&&existing.site_type!==siteType){
     const {error:typeError}=await database.from('websites').update({site_type:siteType}).eq('id',existing.id);
     if(typeError)throw typeError;
     typeChanged=true;
