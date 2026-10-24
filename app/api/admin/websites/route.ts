@@ -2,6 +2,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {isAdmin} from '../../../../lib/admin';
 import {db} from '../../../../lib/db';
 import {parseWebsiteSubmission} from '../../../../lib/sitemaps';
+import {siteTypeOf} from '../../../../lib/forum';
 import {startCrawl} from '../../../../lib/crawl-queue';
 
 export async function POST(req:NextRequest){
@@ -9,14 +10,17 @@ export async function POST(req:NextRequest){
  const body=await req.json().catch(()=>null);
  const parsed=parseWebsiteSubmission({websiteUrl:body?.websiteUrl,sitemapUrls:body?.sitemapUrls??body?.sitemapUrl},30);
  if('error' in parsed)return NextResponse.json({error:parsed.error},{status:400});
+ const siteType=siteTypeOf(body?.siteType);
+ if(!siteType)return NextResponse.json({error:'Choose Website or Forum'},{status:400});
  const database=db();
  try{
   const {data:existing,error:findError}=await database.from('websites')
-   .select('id,url,status,sitemap_url').eq('url',parsed.websiteUrl).maybeSingle();
+   .select('id,url,status,sitemap_url,site_type').eq('url',parsed.websiteUrl).maybeSingle();
   if(findError)throw findError;
   let site:{id:string;url:string;sitemap_url:string|null};
   let websiteAdded=false;
   let approvedWebsite=false;
+  let typeChanged=false;
   if(existing){
    if(existing.status!=='approved'){
     const {error}=await database.from('websites')
@@ -24,11 +28,16 @@ export async function POST(req:NextRequest){
     if(error)throw error;
     approvedWebsite=true;
    }
+   if(existing.site_type!==siteType){
+    const {error:typeError}=await database.from('websites').update({site_type:siteType}).eq('id',existing.id);
+    if(typeError)throw typeError;
+    typeChanged=true;
+   }
    site={id:existing.id,url:existing.url,sitemap_url:existing.sitemap_url};
   }else{
    const {data:created,error}=await database.from('websites').insert({
     url:parsed.websiteUrl,title:new URL(parsed.websiteUrl).hostname,
-    sitemap_url:parsed.urls[0]||null,status:'approved',reviewed_at:new Date().toISOString()
+    sitemap_url:parsed.urls[0]||null,site_type:siteType,status:'approved',reviewed_at:new Date().toISOString()
    }).select('id,url,sitemap_url').single();
    if(error||!created)throw error??Error('Could not save website');
    site=created;
@@ -52,14 +61,15 @@ export async function POST(req:NextRequest){
    }
   }
 
-  const changed=websiteAdded||approvedWebsite||added>0||approvedFromPending>0;
+  const changed=websiteAdded||approvedWebsite||typeChanged||added>0||approvedFromPending>0;
   const shouldIndex=changed||parsed.websiteProvided;
   if(!shouldIndex)return NextResponse.json({
    ok:true,status:'duplicate',added,duplicates,approvedFromPending,websiteAdded,website:site.url,
    message:'All submitted sitemaps are already approved. No duplicates were added.'
   });
   const message=[
-   websiteAdded?'Website added and approved.':approvedWebsite?'Website approved.':parsed.websiteProvided?'Existing website selected for reindexing.':'',
+   websiteAdded?(siteType==='forum'?'Forum added and approved.':'Website added and approved.'):approvedWebsite?'Website approved.':parsed.websiteProvided?'Existing website selected for reindexing.':'',
+   typeChanged?'Indexing type changed to '+siteType+'.':'',
    added?added+' sitemap'+(added===1?'':'s')+' added.':'',
    approvedFromPending?approvedFromPending+' sitemap'+(approvedFromPending===1?'':'s')+' approved.':'',
    duplicates?duplicates+' sitemap'+(duplicates===1?'':'s')+' already registered.':''
@@ -67,7 +77,7 @@ export async function POST(req:NextRequest){
   try{
    const jobId=await startCrawl(site);
    return NextResponse.json({ok:true,status:'queued',website:site.url,websiteAdded,added,duplicates,approvedFromPending,jobId,
-    message:message+' Indexing queued.'});
+    siteType,message:message+' Indexing queued.'});
   }catch{
    return NextResponse.json({ok:true,status:'saved',website:site.url,websiteAdded,added,duplicates,approvedFromPending,
     message:message+' Saved, but indexing could not start. Retry in Crawl Monitor.'});
