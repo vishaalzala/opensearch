@@ -51,7 +51,7 @@ export async function POST(request:NextRequest){
   if(!websiteId) {
    const {data:created,error:createError}=await database.from('websites')
     .insert({url:parsed.websiteUrl,title:new URL(parsed.websiteUrl).hostname,
-      sitemap_url:parsed.urls[0]||null,site_type:siteType,status:'pending'}).select('id').single();
+      sitemap_url:parsed.urls[0]||null,site_type:siteType,crawl_start_url:siteType==='forum'?parsed.startUrl:null,status:'pending'}).select('id').single();
    if(createError) {
     if(createError.code!=='23505')throw createError;
     const {data:existing,error:e}=await database.from('websites')
