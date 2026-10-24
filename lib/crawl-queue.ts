@@ -1,6 +1,7 @@
 import {db} from './db';
 import {validWebsite} from './safety';
 import {safeFetch,locations,extract} from './sitemap-indexer';
+import {forumLink,forumRobots,forumThread,forumPage,noIndex,nonCanonical} from './forum';
 const LIMIT=10000;
 export async function startCrawl(site:{id:string;url:string;sitemap_url:string|null}) {
  const database=db();
@@ -29,9 +30,11 @@ export async function startCrawl(site:{id:string;url:string;sitemap_url:string|n
 export async function runCrawlBatch(jobId:string,batchSize=6) {
  const {data:job,error}=await db().from('crawl_jobs').select('id,website_id,status,discovered,processed,indexed,failed').eq('id',jobId).single();
  if(error||!job)throw Error('Crawl not found');
- const {data:site}=await db().from('websites').select('id,url,status').eq('id',job.website_id).single();
+ const {data:site}=await db().from('websites').select('id,url,status,site_type').eq('id',job.website_id).single();
  if(!site||site.status!=='approved')throw Error('Website must be approved');
  const host=new URL(site.url).hostname;
+ const isForum=site.site_type==='forum';
+ const policy=isForum?await forumRobots(host):null;
  // Recover tasks left in 'processing' when a function timed out or was interrupted.
  // Leave genuinely active claims untouched for at least ten minutes.
  const stale=new Date(Date.now()-10*60*1000).toISOString();
@@ -46,7 +49,7 @@ export async function runCrawlBatch(jobId:string,batchSize=6) {
  }
  const {data:queue,error:qError}=await db().from('crawl_queue')
   .select('id,url,kind,attempts').eq('job_id',jobId).eq('status','pending')
-  .order('id').limit(Math.min(6,Math.max(1,batchSize)));
+  .order('id').limit(Math.min(isForum?2:6,Math.max(1,batchSize)));
  if(qError)throw Error('Cannot read queue');
  if(!queue?.length){
   const {count:inFlight}=await db().from('crawl_queue').select('id',{count:'exact',head:true})
@@ -62,10 +65,15 @@ export async function runCrawlBatch(jobId:string,batchSize=6) {
   const {data:claimed}=await db().from('crawl_queue').update({status:'processing',attempts:task.attempts+1,claimed_at:new Date().toISOString()}).eq('id',task.id).eq('status','pending').select('id').maybeSingle();
   if(!claimed)continue;
   try{
+   if(policy&&!policy.permits(task.url))throw Error('Disallowed by forum robots.txt');
    if(task.kind==='sitemap'){
     const xml=await safeFetch(task.url,host,1_000_000,'xml');
     const kind=/<sitemapindex\b/i.test(xml)?'sitemap':'page';
-    const urls=[...new Set(locations(xml))].filter(u=>{try{const parsed=new URL(u);return parsed.protocol==='https:'&&parsed.hostname===host&&!!validWebsite(u)}catch{return false}});
+    const urls=[...new Set(locations(xml))].filter(u=>{try{
+     const parsed=new URL(u);
+     if(parsed.protocol!=='https:'||parsed.hostname!==host||!validWebsite(u))return false;
+     return !policy||(!kind.includes('page')||!!forumLink(u,host))&&policy.permits(u);
+    }catch{return false}});
     const {count}=await db().from('crawl_queue').select('id',{count:'exact',head:true}).eq('job_id',jobId);
     const capacity=Math.max(0,LIMIT-(count||0));
     for(let i=0;i<Math.min(urls.length,capacity);i+=100){
@@ -76,23 +84,34 @@ export async function runCrawlBatch(jobId:string,batchSize=6) {
     discovered+=Math.min(urls.length,capacity);
    }else{
     const html=await safeFetch(task.url,host,700_000,'html');
-    const page=extract(html,task.url);
+    const page=isForum?forumPage(html,task.url):extract(html,task.url);
     // Discover same-site links from indexed pages, subject to the crawl limit.
     const hrefs=[...html.matchAll(/<a\b[^>]*\bhref=["']([^"']+)["']/gi)].map(m=>m[1]);
-    const links=[...new Set(hrefs.map(h=>{try{return new URL(h,task.url).toString()}catch{return ''}}).filter(h=>{try{const u=new URL(h);return u.protocol==='https:'&&u.hostname===host&&!!validWebsite(h)&&!/(\.(pdf|jpg|jpeg|png|gif|webp|zip|mp4|css|js)(\?|$))/i.test(u.pathname)}catch{return false}}))].slice(0,200);
+    const links=[...new Set(hrefs.map(h=>{try{return new URL(h,task.url).toString()}catch{return ''}})
+     .map(h=>isForum?(forumLink(h,host)||''):h)
+     .filter(h=>{try{const u=new URL(h);return u.protocol==='https:'&&u.hostname===host&&!!validWebsite(h)&&
+       (!policy||policy.permits(h))&&!/(\.(pdf|jpg|jpeg|png|gif|webp|zip|mp4|css|js)(\?|$))/i.test(u.pathname)
+      }catch{return false}}))].slice(0,isForum?75:200);
     const {count:queued}=await db().from('crawl_queue').select('id',{count:'exact',head:true}).eq('job_id',jobId);
     const free=Math.max(0,LIMIT-(queued||0));
     for(let i=0;i<Math.min(links.length,free);i+=100){await db().from('crawl_queue').upsert(links.slice(i,Math.min(i+100,free)).map(url=>({job_id:jobId,url,kind:'page'})),{onConflict:'job_id,url,kind',ignoreDuplicates:true});}
     discovered+=Math.min(links.length,free);
-    const {error:e}=await db().from('search_pages').upsert({...page,website_id:site.id,is_published:true},{onConflict:'url'});
-    if(e)throw e;
-    indexed++;
+    if(!isForum||(forumThread(html,task.url)&&!nonCanonical(html,task.url)&&!noIndex(html))){
+     const {error:e}=await db().from('search_pages').upsert({...page,website_id:site.id,is_published:true},{onConflict:'url'});
+     if(e)throw e;
+     indexed++;
+    } else if(isForum&&noIndex(html)){
+     // Respect newly added noindex on a previously indexed thread.
+     await db().from('search_pages').update({is_published:false}).eq('url',task.url).eq('website_id',site.id);
+    }
    }
    await db().from('crawl_queue').update({status:'done',claimed_at:null}).eq('id',task.id);
   }catch(e){
    failed++;await db().from('crawl_queue').update({status:'failed',claimed_at:null,last_error:e instanceof Error?e.message.slice(0,300):String(e).slice(0,300)}).eq('id',task.id);
   }
   processed++;
+  // Slow down per-host forum crawling even when manually processing batches.
+  if(policy)await new Promise(resolve=>setTimeout(resolve,Math.min(5000,policy.delayMs)));
  }
  const {data:pending}=await db().from('crawl_queue').select('id').eq('job_id',jobId).eq('status','pending').limit(1);
  const {count:inFlight}=await db().from('crawl_queue').select('id',{count:'exact',head:true}).eq('job_id',jobId).eq('status','processing');
