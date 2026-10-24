@@ -15,7 +15,7 @@ export async function POST(req:NextRequest){
  const database=db();
  try{
   const {data:existing,error:findError}=await database.from('websites')
-   .select('id,url,status,sitemap_url,site_type').eq('url',parsed.websiteUrl).maybeSingle();
+   .select('id,url,status,sitemap_url,site_type,crawl_start_url').eq('url',parsed.websiteUrl).maybeSingle();
   if(findError)throw findError;
   let site:{id:string;url:string;sitemap_url:string|null};
   let websiteAdded=false;
@@ -35,11 +35,16 @@ export async function POST(req:NextRequest){
     if(typeError)throw typeError;
     typeChanged=true;
    }
+   if(parsed.startUrl && (existing.site_type==='forum'||(body?.changeExistingType===true&&siteType==='forum')) && parsed.startUrl!==existing.crawl_start_url){
+    const {error:startError}=await database.from('websites')
+     .update({crawl_start_url:parsed.startUrl}).eq('id',existing.id);
+    if(startError)throw startError;
+   }
    site={id:existing.id,url:existing.url,sitemap_url:existing.sitemap_url};
   }else{
    const {data:created,error}=await database.from('websites').insert({
     url:parsed.websiteUrl,title:new URL(parsed.websiteUrl).hostname,
-    sitemap_url:parsed.urls[0]||null,site_type:siteType,status:'approved',reviewed_at:new Date().toISOString()
+    sitemap_url:parsed.urls[0]||null,site_type:siteType,crawl_start_url:siteType==='forum'?parsed.startUrl:null,status:'approved',reviewed_at:new Date().toISOString()
    }).select('id,url,sitemap_url').single();
    if(error||!created)throw error??Error('Could not save website');
    site=created;
