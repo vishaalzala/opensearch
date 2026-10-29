@@ -16,7 +16,15 @@ export async function GET(request: NextRequest) {
     const rows=data || [];
     const total=Number(rows[0]?.total_count || 0);
     return NextResponse.json({ results: rows.map(({total_count, ...rest}: {total_count: number; [key:string]:unknown}) => rest), page, total, totalPages: Math.ceil(total / 15) }, { headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' } });
-  } catch {
-    return NextResponse.json({ error: 'Search temporarily unavailable' }, { status: 503 });
+  } catch (cause) {
+    // Keep detailed error codes in server logs, never expose DB details to visitors.
+    const e = cause as {code?:string;message?:string};
+    console.error('[OpenSearch search RPC]',{
+      code:e?.code||'UNKNOWN',
+      message:String(e?.message||'Unexpected search error').slice(0,180)
+    });
+    return NextResponse.json({ error: 'Search temporarily unavailable' }, {
+      status: 503, headers: { 'Cache-Control': 'no-store' }
+    });
   }
 }
